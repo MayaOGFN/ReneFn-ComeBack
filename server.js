@@ -4,42 +4,46 @@ const fs = require('fs');
 const path = require('path');
 const app = express();
 
-const PORT = process.env.PORT || 8080;
-
 app.use(cors());
-app.use(express.json()); // Essential for reading registration data
+app.use(express.json());
 
-const dataPath = (file) => path.join(__dirname, 'data', file);
+// Path to your users file
+const dataDir = path.join(__dirname, 'data');
+const usersFile = path.join(dataDir, 'users.json');
+
+// --- FIX: Ensure the 'data' folder and 'users.json' exist ---
+if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir);
+}
+if (!fs.existsSync(usersFile)) {
+    fs.writeFileSync(usersFile, JSON.stringify([]));
+}
 
 // Helper to read/write JSON
-const readJson = (file) => JSON.parse(fs.readFileSync(dataPath(file), 'utf8'));
-const writeJson = (file, data) => fs.writeFileSync(dataPath(file), JSON.stringify(data, null, 2));
+const readUsers = () => JSON.parse(fs.readFileSync(usersFile, 'utf8'));
+const writeUsers = (data) => fs.writeFileSync(usersFile, JSON.stringify(data, null, 2));
 
-// --- ROUTES ---
-
-app.get('/', (req, res) => res.send("ReneFN Backend Online"));
-
-app.get('/launcher/version', (req, res) => res.send(readJson('launcherVersion.json').version));
-app.get('/news', (req, res) => res.json(readJson('news.json')));
-app.get('/shop', (req, res) => res.json(readJson('shop.json')));
-
-// --- NEW REGISTRATION API ---
+// --- REGISTRATION ROUTE ---
 app.post('/register', (req, res) => {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ success: false, message: "Missing info" });
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) return res.status(400).json({ success: false, message: "Email and password required!" });
 
-    const users = readJson('users.json');
-    
-    // Check if user exists
-    if (users.find(u => u.email === email)) {
-        return res.status(400).json({ success: false, message: "User already exists!" });
+        const users = readUsers();
+        if (users.find(u => u.email === email)) {
+            return res.status(400).json({ success: false, message: "User already exists!" });
+        }
+
+        users.push({ email, password });
+        writeUsers(users);
+        
+        console.log(`New user registered: ${email}`);
+        res.json({ success: true, message: "Account created successfully!" });
+    } catch (err) {
+        console.error("Registration Error:", err);
+        res.status(500).json({ success: false, message: "Internal Server Error. Check backend logs." });
     }
-
-    // Add user and save
-    users.push({ email, password });
-    writeJson('users.json', users);
-    
-    res.json({ success: true, message: "Account Created!" });
 });
 
-app.listen(PORT, () => console.log(`Backend running on ${PORT}`));
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
