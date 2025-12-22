@@ -7,42 +7,39 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json()); // Essential for reading registration data
 
-// Helper function to read JSON files easily
-const readJson = (fileName) => {
-    const filePath = path.join(__dirname, 'data', fileName);
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-};
+const dataPath = (file) => path.join(__dirname, 'data', file);
+
+// Helper to read/write JSON
+const readJson = (file) => JSON.parse(fs.readFileSync(dataPath(file), 'utf8'));
+const writeJson = (file, data) => fs.writeFileSync(dataPath(file), JSON.stringify(data, null, 2));
 
 // --- ROUTES ---
 
-// 0. Home Page (Fixes "Cannot GET /")
-app.get('/', (req, res) => {
-    res.send("<h1>ReneFN Backend is Online</h1><p>The API is running correctly.</p>");
+app.get('/', (req, res) => res.send("ReneFN Backend Online"));
+
+app.get('/launcher/version', (req, res) => res.send(readJson('launcherVersion.json').version));
+app.get('/news', (req, res) => res.json(readJson('news.json')));
+app.get('/shop', (req, res) => res.json(readJson('shop.json')));
+
+// --- NEW REGISTRATION API ---
+app.post('/register', (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ success: false, message: "Missing info" });
+
+    const users = readJson('users.json');
+    
+    // Check if user exists
+    if (users.find(u => u.email === email)) {
+        return res.status(400).json({ success: false, message: "User already exists!" });
+    }
+
+    // Add user and save
+    users.push({ email, password });
+    writeJson('users.json', users);
+    
+    res.json({ success: true, message: "Account Created!" });
 });
 
-// 1. Version API
-app.get('/launcher/version', (req, res) => {
-    const data = readJson('launcherVersion.json');
-    res.send(data.version);
-});
-
-// 2. News API
-app.get('/news', (req, res) => {
-    res.json(readJson('news.json'));
-});
-
-// 3. Item Shop API
-app.get('/shop', (req, res) => {
-    res.json(readJson('shop.json'));
-});
-
-// 4. Redeem API (Static for now)
-app.get('/redeem', (req, res) => {
-    res.send("<h1>Redeem Page</h1><p>Redeem system coming soon.</p>");
-});
-
-app.listen(PORT, () => {
-    console.log(`ReneFN Backend running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Backend running on ${PORT}`));
