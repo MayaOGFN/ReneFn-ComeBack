@@ -2,46 +2,55 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 
-// Use the port Render gives us, or default to 8080 for local testing
+// Render uses dynamic ports; this line is critical for deployment
 const PORT = process.env.PORT || 8080;
 
 app.use(cors());
 app.use(express.json());
 
-// 1. Version Check (Used for forcing updates)
+// --- 1. VERSION API ---
+// If the launcher's CurrentVersion (1.0) is LOWER than this number, 
+// the launcher will block access and show "UPDATE REQUIRED".
 app.get('/launcher/version', (req, res) => {
     res.send("1.0"); 
 });
 
-// 2. News Feed (Shows in the news panel)
+// --- 2. NEWS API ---
+// These appear in the top box of your news/shop page
 app.get('/news', (req, res) => {
     res.json([
         {
-            "name": "ReneFN is LIVE!",
+            "name": "Welcome to ReneFN",
             "image": "https://i.imgur.com/DYhYsgd.png"
         },
         {
-            "name": "Local Backend Connected",
-            "image": "https://i.imgur.com/your-image.png"
+            "name": "Join our Discord",
+            "image": "https://i.imgur.com/your-discord-image.png"
         }
     ]);
 });
 
-// 3. Item Shop (Shows in the shop panel)
+// --- 3. ITEM SHOP API ---
+// These appear in the bottom box of your news/shop page
 app.get('/shop', (req, res) => {
     res.json([
         {
             "name": "Renegade Raider",
             "image": "https://fortnite-api.com/images/cosmetics/br/cid_028_athena_commando_f/featured.png"
+        },
+        {
+            "name": "Ariel Specialist",
+            "image": "https://fortnite-api.com/images/cosmetics/br/cid_017_athena_commando_f/featured.png"
         }
     ]);
 });
 
-// 4. Redeem Page (A simple HTML placeholder)
+// --- 4. REDEEM API ---
+// This is the page that opens when the 'Redeem' button is clicked
 app.get('/redeem', (req, res) => {
-    res.send("<h1>ReneFN Redeem</h1><p>Redeem system coming soon.</p>");
+    res.send("<h1>ReneFN Code Redemption</h1><p>Redeem system is currently under maintenance.</p>");
 });
 
 app.listen(PORT, () => {
-    console.log(`ReneFN Backend is active on port ${PORT}`);
+    console.log(`ReneFN Backend running on port ${PORT}`);
 });
