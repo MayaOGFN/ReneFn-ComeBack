@@ -7,147 +7,186 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// --- DATABASE & FOLDER SYSTEM ---
-const dataDir = path.join(__dirname, 'data');
-const usersFile = path.join(dataDir, 'users.json');
-const storageDir = path.join(dataDir, 'cloudstorage');
-
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
-if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir);
-if (!fs.existsSync(usersFile)) fs.writeFileSync(usersFile, JSON.stringify([]));
-
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// --- HELPERS ---
-const getUsers = () => JSON.parse(fs.readFileSync(usersFile));
-const saveUsers = (data) => fs.writeFileSync(usersFile, JSON.stringify(data, null, 2));
+// --- CONFIG & DATABASE ---
+const dataDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
+const usersFile = path.join(dataDir, 'users.json');
+if (!fs.existsSync(usersFile)) fs.writeFileSync(usersFile, JSON.stringify([]));
 
-// --- 1. THE "BYPASS" AUTH SYSTEM ---
-// This handles the OAuth2 handshake the game performs after injection.
-
+// --- 1. AUTH & ACCOUNT BYPASS ---
 app.post('/account/api/oauth/token', (req, res) => {
     res.json({
-        access_token: crypto.randomBytes(16).toString('hex'),
+        access_token: "renefn_token_" + crypto.randomBytes(4).toString('hex'),
         expires_in: 3600,
         token_type: "bearer",
-        account_id: req.body.username || "ReneFN_User",
+        account_id: req.body.username || "FynoxUser",
         client_id: "fortnite",
-        displayName: req.body.username || "ReneFN_Player"
+        displayName: req.body.username || "FynoxPlayer"
     });
 });
 
 app.get('/account/api/public/account/:accountId', (req, res) => {
-    res.json({
-        id: req.params.accountId,
-        displayName: req.params.accountId,
-        email: req.params.accountId + "@renefn.com",
-        failed_login_attempts: 0,
-        last_login: new Date().toISOString(),
-        numberOfDisplayNameChanges: 0,
-        ageGroup: "UNKNOWN",
-        canModifyDisplayName: false
-    });
+    res.json({ id: req.params.accountId, displayName: req.params.accountId, email: "dev@renefn.com" });
 });
 
-// --- 2. GAME SERVICE STATUS (Lightswitch) ---
-// If this returns anything other than "UP", you get the "Unable to connect" error.
-app.get('/lightswitch/api/service/bulk/status', (req, res) => {
-    res.json([{
-        serviceInstanceId: "fortnite",
-        status: "UP",
-        message: "ReneFN Servers are Operational",
-        maintenanceUri: null,
-        allowedActions: ["PLAY", "DOWNLOAD"],
-        banned: false
-    }]);
-});
+// --- 2. THE LOBBY & SKINS (ATHENA PROFILE) ---
+// This is what gives you the default skins and items when the lobby loads.
+const getAthenaProfile = (accountId) => {
+    return {
+        _id: accountId,
+        accountId: accountId,
+        created: new Date().toISOString(),
+        updated: new Date().toISOString(),
+        rvn: 1,
+        WASH: 1,
+        profileId: "athena",
+        stats: {
+            attributes: {
+                past_seasons: [],
+                season_match_boost: 10,
+                loadout_num: 1,
+                favorite_victorypose: "",
+                m_num_last_season_reached: 100,
+                favorite_consumable_emote: "",
+                banner_color: "DefaultColor",
+                favorite_callingcard: "",
+                favorite_character: "AthenaCharacter:CID_001_Athena_Character_Default",
+                favorite_backbling: "",
+                favorite_pickaxe: "AthenaPickaxe:DefaultPickaxe",
+                favorite_glider: "AthenaGlider:DefaultGlider",
+                favorite_skydivecontrail: "",
+                favorite_musicpack: "",
+                favorite_itemwraps: ["","","","","","",""],
+                level: 100,
+                accountLevel: 500,
+                xp: 0,
+                season_number: 10
+            }
+        },
+        items: {
+            "DefaultSkin": {
+                templateId: "AthenaCharacter:CID_001_Athena_Character_Default",
+                attributes: { item_seen: true, favorite: false }
+            },
+            "DefaultPick": {
+                templateId: "AthenaPickaxe:DefaultPickaxe",
+                attributes: { item_seen: true, favorite: false }
+            },
+            "Season10Pass": {
+                templateId: "Token:season10_battlepass",
+                attributes: { item_seen: true }
+            }
+        }
+    };
+};
 
-// --- 3. CLOUD STORAGE (Settings/Keybinds) ---
-app.get('/fortnite/api/cloudstorage/system', (req, res) => {
-    const files = fs.readdirSync(storageDir).map(file => ({
-        uniqueFilename: file,
-        filename: file,
-        hash: crypto.createHash('sha1').update(file).digest('hex'),
-        hash256: crypto.createHash('sha256').update(file).digest('hex'),
-        length: fs.statSync(path.join(storageDir, file)).size,
-        contentType: "application/octet-stream",
-        uploaded: new Date().toISOString(),
-        storageType: "S3",
-        storageIds: {},
-        doNotCache: false
-    }));
-    res.json(files);
-});
+// --- 3. THE BATTLE PASS & V-BUCKS (COMMON_CORE) ---
+const getCommonCore = (accountId) => {
+    return {
+        _id: accountId,
+        stats: {
+            attributes: {
+                mtx_gradual_currency: 0,
+                mtx_purchase_history: [],
+                mtx_affiliate: "",
+                mtx_affiliate_set_time: "",
+                current_mtx: 999999 // Unlimited V-Bucks
+            }
+        },
+        items: {
+            "Currency": {
+                templateId: "Currency:MtxPurchased",
+                quantity: 999999,
+                attributes: { platform: "EpicPC" }
+            }
+        }
+    };
+};
 
-app.get('/fortnite/api/cloudstorage/system/:file', (req, res) => {
-    const filePath = path.join(storageDir, req.params.file);
-    if (fs.existsSync(filePath)) res.sendFile(filePath);
-    else res.status(404).end();
-});
-
-// --- 4. MCP & PROFILE (The "Athena" Skin System) ---
-// This is what populates your locker and lets you past the "Checking for Updates" screen.
+// --- 4. MCP COMMAND HANDLER ---
 app.post('/fortnite/api/game/v2/profile/:accountId/client/:command', (req, res) => {
-    const { command, accountId } = req.params;
-    const profileId = req.query.profileId || "common_core";
+    const { accountId, command } = req.params;
+    const profileId = req.query.profileId;
 
-    let response = {
+    let profileData = { _id: accountId };
+    if (profileId === "athena") profileData = getAthenaProfile(accountId);
+    else if (profileId === "common_core") profileData = getCommonCore(accountId);
+
+    res.json({
         profileRevision: 1,
         profileId: profileId,
         profileChangesBaseRevision: 1,
-        profileChanges: [],
+        profileChanges: [{
+            changeType: "fullProfileUpdate",
+            profile: profileData
+        }],
         serverTime: new Date().toISOString(),
         responseVersion: 1
-    };
-
-    // Athena profile handles Skins/Emotes
-    if (profileId === "athena") {
-        response.profileChanges.push({
-            changeType: "fullProfileUpdate",
-            profile: {
-                _id: accountId,
-                accountId: accountId,
-                stats: { attributes: { level: 100, accountLevel: 100 } },
-                items: {
-                    "ReneFN_Skin": {
-                        templateId: "AthenaCharacter:CID_001_Athena_Character_Default",
-                        attributes: { favorite: true }
-                    }
-                    // You can add 1,000+ items here manually to simulate a full locker
-                }
-            }
-        });
-    }
-
-    res.json(response);
+    });
 });
 
-// --- 5. MATCHMAKING & WAITING ROOM ---
-app.get('/fortnite/api/matchmaking/session/findPlayer/*', (req, res) => res.status(204).end());
-app.get('/fortnite/api/game/v2/chat/:accountId/rooms', (req, res) => res.json([]));
-app.post('/fortnite/api/game/v2/grant_access', (req, res) => res.json({ access_token: "renefn_access", expires_in: 3600 }));
+// --- 5. THE ITEM SHOP (CATALOG) ---
+// This is a simplified version of the thousands of lines needed for a full shop
+app.get('/fortnite/api/storefront/v2/catalog', (req, res) => {
+    res.json({
+        refreshIntervalHrs: 24,
+        dailyAssets: [],
+        storefronts: [
+            {
+                name: "BRDailyStorefront",
+                catalogEntries: [
+                    {
+                        offerId: "v2:/renefn_daily_offer",
+                        devName: "Cool Skin",
+                        offerType: "StaticPrice",
+                        prices: [{ currencyType: "MtxCurrency", currencySubType: "", price: 1200 }],
+                        itemGrants: [{ templateId: "AthenaCharacter:CID_028_Athena_Character_Default", quantity: 1 }]
+                    }
+                ]
+            },
+            {
+                name: "BRWeeklyStorefront",
+                catalogEntries: []
+            }
+        ]
+    });
+});
 
-// --- 6. LAUNCHER SPECIFIC ROUTES ---
-app.get('/', (req, res) => res.send("<h1>ReneFN Backend Online</h1>"));
-app.get('/news', (req, res) => res.json([{ name: "Welcome to Season X", image: "https://i.imgur.com/DYhYsgd.png", adspace: "Play Now!" }]));
+// --- 6. NECESSARY BYPASSES (To reach lobby) ---
+app.get('/lightswitch/api/service/bulk/status', (req, res) => {
+    res.json([{ serviceInstanceId: "fortnite", status: "UP", allowedActions: ["PLAY"] }]);
+});
 
+app.get('/fortnite/api/cloudstorage/system', (req, res) => res.json([]));
+app.get('/fortnite/api/v2/versioncheck/*', (req, res) => res.json({ type: "NO_UPDATE" }));
+app.get('/content/api/pages/fortnite-game', (req, res) => {
+    res.json({
+        "dynamicbackgrounds": {
+            "backgrounds": {
+                "backgrounds": [{ "stage": "season10", "backgroundimage": "https://i.imgur.com/DYhYsgd.png" }]
+            }
+        }
+    });
+});
+
+// --- 7. REGISTRATION ---
 app.post('/register', (req, res) => {
     const { email, password } = req.body;
-    let users = getUsers();
-    if (users.find(u => u.email === email)) return res.status(400).send("User already exists!");
+    if (!email || !password) return res.status(400).send("Bad Request");
+    let users = JSON.parse(fs.readFileSync(usersFile));
     users.push({ email, password });
-    saveUsers(users);
-    res.send("Account registered successfully!");
+    fs.writeFileSync(usersFile, JSON.stringify(users));
+    res.send("Account Created! You can now login in the Launcher.");
 });
 
-// --- 7. MISC BYPASSES ---
-app.get('/fortnite/api/v2/versioncheck/*', (req, res) => res.json({ type: "NO_UPDATE" }));
-app.get('/fortnite/api/storefront/v2/catalog', (req, res) => res.json({ refreshIntervalHrs: 24, dailyAssets: [], weeklyAssets: [] }));
-app.get('/content/api/pages/fortnite-game', (req, res) => res.json({ "jcr:checkedOut": true, "_type": "Fortnite Game", "dynamicbackgrounds": {} }));
-
+// --- 8. SERVER START ---
 app.listen(PORT, () => {
-    console.log(`ReneFN Backend running on Port ${PORT}`);
-    console.log(`Compatible with Season X / Starfall DLL`);
+    console.log(`==========================================`);
+    console.log(`RENEFN GAME SERVER - ONLINE`);
+    console.log(`Port: ${PORT}`);
+    console.log(`Compatibility: Season 10 / Lobby / Skins`);
+    console.log(`==========================================`);
 });
