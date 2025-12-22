@@ -7,41 +7,38 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// --- 1. SETUP & DATABASE ---
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// --- DATABASE SETUP ---
 const dataDir = path.join(__dirname, 'data');
-const usersFile = path.join(dataDir, 'users.json');
-
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
+const usersFile = path.join(dataDir, 'users.json');
 if (!fs.existsSync(usersFile)) fs.writeFileSync(usersFile, JSON.stringify([]));
 
-const readDB = () => JSON.parse(fs.readFileSync(usersFile));
-const writeDB = (data) => fs.writeFileSync(usersFile, JSON.stringify(data, null, 2));
-
-// --- 2. ROOT ROUTE (FIXES "CANNOT GET /") ---
+// --- 1. ROOT ROUTE (FIXES "CANNOT GET /") ---
 app.get('/', (req, res) => {
     res.send(`
-        <body style="background:#0f0f0f;color:white;font-family:sans-serif;text-align:center;padding:100px;">
-            <h1 style="color:#00a2ff;font-size:3rem;">RENEFN BACKEND</h1>
-            <p style="font-size:1.5rem;">STATUS: <span style="color:#00ff88;">CONNECTED</span></p>
-            <hr style="width:300px;border:1px solid #333;">
-            <p>Ready for Season X Login</p>
+        <body style="background:#111;color:white;text-align:center;padding-top:100px;font-family:Arial;">
+            <h1 style="color:#0078d4;">RENEFN SERVER ONLINE</h1>
+            <p>Bypassing "Checking for Updates"...</p>
+            <div style="border:1px solid #333;padding:20px;display:inline-block;border-radius:8px;">
+                Status: <span style="color:lime;">Operational</span><br>
+                V-Bucks System: <span style="color:lime;">Active</span>
+            </div>
         </body>
     `);
 });
 
-// --- 3. AUTHENTICATION ---
+// --- 2. AUTH & LOGIN BYPASS ---
 app.post('/account/api/oauth/token', (req, res) => {
     const id = req.body.username || "RenePlayer";
     res.json({
-        access_token: "token_" + crypto.randomBytes(16).toString('hex'),
+        access_token: "rene_token_" + crypto.randomBytes(8).toString('hex'),
         expires_in: 3600,
         token_type: "bearer",
         account_id: id,
-        client_id: "fortnite",
         displayName: id
     });
 });
@@ -50,67 +47,79 @@ app.get('/account/api/public/account/:accountId', (req, res) => {
     res.json({ id: req.params.accountId, displayName: req.params.accountId, email: "dev@renefn.com" });
 });
 
+// --- 3. VERSION CHECK BYPASS (FIXES "CHECKING FOR UPDATES") ---
+app.get('/fortnite/api/v2/versioncheck/*', (req, res) => {
+    res.json({ type: "NO_UPDATE" });
+});
+
+app.get('/content/api/pages/fortnite-game', (req, res) => {
+    res.json({
+        "jcr:checkedOut": true,
+        "dynamicbackgrounds": {
+            "backgrounds": {
+                "backgrounds": [{ "stage": "season10", "backgroundimage": "https://i.imgur.com/DYhYsgd.png" }]
+            }
+        },
+        "news": { "news": { "messages": [{ "title": "ReneFN", "body": "Welcome to Season X!", "image": "https://i.imgur.com/DYhYsgd.png" }] } }
+    });
+});
+
 // --- 4. THE V-BUCKS & BATTLE PASS FIX (COMMON_CORE) ---
 const getCommonCore = (accountId) => ({
     _id: accountId,
     stats: {
         attributes: {
-            mtx_gradual_currency: 999999, // FIXED: Game checks this for V-Buck display
-            mtx_purchase_history: [],
+            mtx_gradual_currency: 999999, // Displays V-Bucks in top right
             current_mtx: 999999,
-            weekly_mtx_count: 0,
-            daily_mtx_count: 0,
+            mtx_purchase_history: [],
             level: 100
         }
     },
     items: {
-        "VBucks_Item": {
-            templateId: "Currency:MtxPurchased", // FIXED: Required for locker display
+        "VBucks_Main": {
+            templateId: "Currency:MtxPurchased",
             quantity: 999999,
             attributes: { platform: "EpicPC" }
         },
-        "Season10_Pass": {
+        "BP_Token": {
             templateId: "Token:season10_battlepass",
             attributes: { item_seen: true }
         }
     }
 });
 
-// --- 5. ATHENA PROFILE (SKINS & LOBBY) ---
+// --- 5. ATHENA PROFILE (LOCKER & SKINS) ---
 const getAthenaProfile = (accountId) => ({
     _id: accountId,
     stats: {
         attributes: {
-            season_match_boost: 10,
-            loadout_num: 1,
-            favorite_character: "AthenaCharacter:CID_001_Athena_Character_Default",
-            favorite_pickaxe: "AthenaPickaxe:DefaultPickaxe",
             level: 100,
             accountLevel: 500,
-            season_number: 10
+            season_number: 10,
+            favorite_character: "AthenaCharacter:CID_001_Athena_Character_Default"
         }
     },
     items: {
-        "Skin_1": { templateId: "AthenaCharacter:CID_001_Athena_Character_Default", attributes: { item_seen: true } },
-        "Skin_2": { templateId: "AthenaCharacter:CID_431_Athena_Character_Default", attributes: { item_seen: true } },
-        "Pickaxe_1": { templateId: "AthenaPickaxe:DefaultPickaxe", attributes: { item_seen: true } }
+        "Skin1": { templateId: "AthenaCharacter:CID_001_Athena_Character_Default", attributes: { item_seen: true } },
+        "Skin2": { templateId: "AthenaCharacter:CID_431_Athena_Character_Default", attributes: { item_seen: true } },
+        "Pick1": { templateId: "AthenaPickaxe:DefaultPickaxe", attributes: { item_seen: true } }
     }
 });
 
 // --- 6. MCP COMMANDS ---
 app.post('/fortnite/api/game/v2/profile/:accountId/client/:command', (req, res) => {
-    const { accountId } = req.params;
     const profileId = req.query.profileId;
-    let data = { _id: accountId };
+    const accountId = req.params.accountId;
+    let pData = { _id: accountId };
 
-    if (profileId === "athena") data = getAthenaProfile(accountId);
-    else if (profileId === "common_core") data = getCommonCore(accountId);
+    if (profileId === "athena") pData = getAthenaProfile(accountId);
+    else if (profileId === "common_core") pData = getCommonCore(accountId);
 
     res.json({
         profileRevision: 1,
         profileId: profileId,
         profileChangesBaseRevision: 1,
-        profileChanges: [{ changeType: "fullProfileUpdate", profile: data }],
+        profileChanges: [{ changeType: "fullProfileUpdate", profile: pData }],
         serverTime: new Date().toISOString(),
         responseVersion: 1
     });
@@ -120,28 +129,15 @@ app.post('/fortnite/api/game/v2/profile/:accountId/client/:command', (req, res) 
 app.get('/fortnite/api/storefront/v2/catalog', (req, res) => {
     res.json({
         refreshIntervalHrs: 24,
-        dailyAssets: [],
-        storefronts: [
-            {
-                name: "BRDailyStorefront",
-                catalogEntries: [
-                    {
-                        offerId: "v2:/offer_1",
-                        devName: "Renegade Raider",
-                        offerType: "StaticPrice",
-                        prices: [{ currencyType: "MtxCurrency", price: 1200 }],
-                        itemGrants: [{ templateId: "AthenaCharacter:CID_028_Athena_Character_Default", quantity: 1 }]
-                    },
-                    {
-                        offerId: "v2:/offer_2",
-                        devName: "Aerial Threat",
-                        offerType: "StaticPrice",
-                        prices: [{ currencyType: "MtxCurrency", price: 1500 }],
-                        itemGrants: [{ templateId: "AthenaCharacter:CID_142_Athena_Character_Default", quantity: 1 }]
-                    }
-                ]
-            }
-        ]
+        storefronts: [{
+            name: "BRDailyStorefront",
+            catalogEntries: [{
+                offerId: "v2:/offer1",
+                devName: "Renegade Raider",
+                prices: [{ currencyType: "MtxCurrency", price: 1200 }],
+                itemGrants: [{ templateId: "AthenaCharacter:CID_028_Athena_Character_Default", quantity: 1 }]
+            }]
+        }]
     });
 });
 
@@ -151,36 +147,23 @@ app.get('/lightswitch/api/service/bulk/status', (req, res) => {
 });
 
 app.get('/fortnite/api/cloudstorage/system', (req, res) => res.json([]));
-app.get('/fortnite/api/v2/versioncheck/*', (req, res) => res.json({ type: "NO_UPDATE" }));
-
-app.get('/content/api/pages/fortnite-game', (req, res) => {
-    res.json({
-        "jcr:checkedOut": true,
-        "dynamicbackgrounds": {
-            "backgrounds": { "backgrounds": [{ "stage": "season10", "backgroundimage": "https://i.imgur.com/DYhYsgd.png" }] }
-        }
-    });
-});
-
-// --- 9. LAUNCHER REGISTRATION ---
-app.post('/register', (req, res) => {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).send("Invalid Info");
-    let db = readDB();
-    if (db.find(u => u.email === email)) return res.status(400).send("Already Registered");
-    db.push({ email, password, date: new Date() });
-    writeDB(db);
-    res.send("Success! Account created.");
-});
-
-// --- 10. SYSTEM ROUTES ---
+app.post('/fortnite/api/game/v2/grant_access', (req, res) => res.json({ access_token: "grant", expires_in: 3600 }));
 app.get('/fortnite/api/game/v2/chat/:accountId/rooms', (req, res) => res.json([]));
 app.get('/fortnite/api/matchmaking/session/findPlayer/*', (req, res) => res.status(204).end());
-app.post('/fortnite/api/game/v2/grant_access', (req, res) => res.json({ access_token: "grant", expires_in: 3600 }));
 
-// --- 11. STARTUP ---
+// --- 9. REGISTRATION ---
+app.post('/register', (req, res) => {
+    const { email, password } = req.body;
+    let db = JSON.parse(fs.readFileSync(usersFile));
+    if (db.find(u => u.email === email)) return res.status(400).send("User exists");
+    db.push({ email, password });
+    fs.writeFileSync(usersFile, JSON.stringify(db, null, 2));
+    res.send("Account Created!");
+});
+
+// --- 10. SERVER INIT ---
 app.listen(PORT, () => {
-    console.log(`[RENEFN] Backend active on port ${PORT}`);
-    console.log(`[RENEFN] V-Bucks Fixed: 999,999 granted per user.`);
-    console.log(`[RENEFN] Season X Lobby & Battle Pass Ready.`);
+    console.log(`[SYSTEM] Backend Live on Port ${PORT}`);
+    console.log(`[BYPASS] "Checking for Updates" patch applied.`);
+    console.log(`[VBUCKS] mtx_gradual_currency set to 999,999.`);
 });
