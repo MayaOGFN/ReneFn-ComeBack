@@ -1,20 +1,23 @@
 const express = require('express');
 const cors = require('cors');
 const app = express();
-const PORT = 8080;
+
+// Use the port Render gives us, or default to 8080 for local testing
+const PORT = process.env.PORT || 8080;
 
 app.use(cors());
+app.use(express.json());
 
-// --- 1. Version Check ---
+// 1. Version Check (Used for forcing updates)
 app.get('/launcher/version', (req, res) => {
-    res.send("1.0"); // Change this to 1.1 to force an update lockdown
+    res.send("1.0"); 
 });
 
-// --- 2. News Feed ---
+// 2. News Feed (Shows in the news panel)
 app.get('/news', (req, res) => {
     res.json([
         {
-            "name": "ReneFN is Live!",
+            "name": "ReneFN is LIVE!",
             "image": "https://i.imgur.com/DYhYsgd.png"
         },
         {
@@ -24,7 +27,7 @@ app.get('/news', (req, res) => {
     ]);
 });
 
-// --- 3. Item Shop ---
+// 3. Item Shop (Shows in the shop panel)
 app.get('/shop', (req, res) => {
     res.json([
         {
@@ -34,12 +37,11 @@ app.get('/shop', (req, res) => {
     ]);
 });
 
-// --- 4. Redeem Code (Placeholder) ---
+// 4. Redeem Page (A simple HTML placeholder)
 app.get('/redeem', (req, res) => {
-    res.send("<h1>ReneFN Redeem Page</h1><p>Enter your code here.</p>");
+    res.send("<h1>ReneFN Redeem</h1><p>Redeem system coming soon.</p>");
 });
 
 app.listen(PORT, () => {
-    console.log(`Backend running at http://localhost:${PORT}`);
-    console.log("Fynox connection removed. Launcher now using ReneFN Local.");
+    console.log(`ReneFN Backend is active on port ${PORT}`);
 });
