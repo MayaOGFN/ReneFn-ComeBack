@@ -1,14 +1,4 @@
-/**
- * RENE-FN SEASON X - AUTH & REGISTRATION SYSTEM
- * ---------------------------------------------
- * Now includes:
- * - Homepage "Sign Up" Button
- * - Registration Page (Email, Password, Username)
- * - Persistent users.json storage
- */
-
 const express = require('express');
-const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -17,136 +7,124 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 const USERS_FILE = path.join(__dirname, 'users.json');
 
-app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// --- DATABASE FUNCTIONS ---
+// --- DATABASE HELPERS ---
 function loadUsers() {
     if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, JSON.stringify([]));
     return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
 }
-
-function saveUsers(users) {
+function saveUser(user) {
+    let users = loadUsers();
+    const index = users.findIndex(u => u.id === user.id);
+    if (index !== -1) users[index] = user; else users.push(user);
     fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 4));
 }
 
-// --- 1. HOMEPAGE (WITH SIGN UP BUTTON) ---
+// --- 1. THE FRONTEND (SIGN UP & LOBBY CONFIG) ---
 app.get('/', (req, res) => {
     res.send(`
-        <body style="background:#050505; color:#00ffff; font-family:sans-serif; text-align:center; padding-top:10vh;">
-            <div style="border:2px solid #00ffff; display:inline-block; padding:50px; border-radius:15px; background:#000; box-shadow: 0 0 20px #00ffff;">
-                <h1>RENE-FN LAUNCHER</h1>
-                <p style="color:#fff;">Status: <span style="color:lime;">ONLINE</span></p>
-                <hr style="border-color:#222;">
-                
-                <a href="/signup" style="text-decoration:none;">
-                    <button style="background:#00ffff; color:#000; border:none; padding:15px 30px; font-weight:bold; border-radius:5px; cursor:pointer; font-size:1.1em; margin-top:20px;">
-                        SIGN UP CONFIG
-                    </button>
-                </a>
-
-                <p style="font-size:0.8em; margin-top:20px; color:#555;">v10.40 - Starfall Ready</p>
+        <body style="background:#000; color:#00ffff; font-family:monospace; text-align:center; padding:50px;">
+            <h1 style="text-shadow: 0 0 10px #00ffff;">RENE-FN SEASON X</h1>
+            <div style="border:1px solid #333; padding:20px; display:inline-block; border-radius:10px;">
+                <p>Welcome to the custom backend.</p>
+                <a href="/signup"><button style="padding:10px 20px; background:#00ffff; border:none; cursor:pointer;">SIGN UP CONFIG</button></a>
             </div>
         </body>
     `);
 });
 
-// --- 2. SIGN UP PAGE (FORM) ---
 app.get('/signup', (req, res) => {
     res.send(`
-        <body style="background:#050505; color:#fff; font-family:sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;">
-            <form action="/api/register" method="POST" style="background:#111; padding:40px; border-radius:10px; border:1px solid #333; width:300px;">
-                <h2 style="color:#00ffff; text-align:center;">CREATE ACCOUNT</h2>
-                
-                <label>Username</label><br>
-                <input type="text" name="username" required style="width:100%; padding:10px; margin:10px 0; background:#222; border:1px solid #444; color:#fff;"><br>
-                
-                <label>Email</label><br>
-                <input type="email" name="email" required style="width:100%; padding:10px; margin:10px 0; background:#222; border:1px solid #444; color:#fff;"><br>
-                
-                <label>Password</label><br>
-                <input type="password" name="password" required style="width:100%; padding:10px; margin:10px 0; background:#222; border:1px solid #444; color:#fff;"><br>
-                
-                <button type="submit" style="width:104%; padding:12px; background:#00ffff; border:none; font-weight:bold; cursor:pointer; margin-top:10px;">REGISTER</button>
-                <br><br>
-                <a href="/" style="color:#555; font-size:0.8em; text-decoration:none;">Back to Home</a>
+        <body style="background:#000; color:#fff; font-family:sans-serif; display:flex; justify-content:center; align-items:center; height:100vh;">
+            <form action="/api/register" method="POST" style="background:#111; padding:30px; border-radius:10px; width:300px;">
+                <h2 style="color:#00ffff;">CREATE ACCOUNT</h2>
+                <input type="text" name="username" placeholder="Username" required style="width:100%; margin:10px 0; padding:10px;"><br>
+                <input type="email" name="email" placeholder="Email" required style="width:100%; margin:10px 0; padding:10px;"><br>
+                <input type="password" name="password" placeholder="Password" required style="width:100%; margin:10px 0; padding:10px;"><br>
+                <button type="submit" style="width:100%; padding:10px; background:#00ffff; border:none; font-weight:bold;">REGISTER</button>
             </form>
         </body>
     `);
 });
 
-// --- 3. REGISTRATION LOGIC ---
 app.post('/api/register', (req, res) => {
     const { username, email, password } = req.body;
-    let users = loadUsers();
+    const user = { id: crypto.randomBytes(12).toString('hex'), username, email, password, vbucks: 999999, level: 100 };
+    saveUser(user);
+    res.send("<h1>Account Created! Log in through Fortnite.</h1><a href='/'>Back</a>");
+});
 
-    // Check if user exists
-    if (users.find(u => u.username === username || u.email === email)) {
-        return res.send("<script>alert('User or Email already exists!'); window.location='/signup';</script>");
-    }
+// --- 2. OAUTH & ACCOUNT HANDSHAKE ---
+app.post('/account/api/oauth/token', (req, res) => {
+    const name = req.body.username || "Player";
+    const users = loadUsers();
+    const user = users.find(u => u.username === name) || { id: "guest", username: name };
+    res.json({
+        access_token: `access_${user.id}`, expires_in: 3600, token_type: "bearer",
+        account_id: user.id, displayName: user.username, client_id: "fortnite", internal_client: true
+    });
+});
 
-    const newUser = {
-        id: crypto.randomBytes(16).toString('hex'),
-        username,
-        email,
-        password, // In a real app, you should hash this!
-        created: new Date().toISOString(),
-        vbucks: 999999,
-        level: 100
+app.get('/account/api/public/account/:accountId', (req, res) => {
+    const user = loadUsers().find(u => u.id === req.params.accountId) || { username: "Player" };
+    res.json({ id: req.params.accountId, displayName: user.username, email: user.email || "bot@rene.fn" });
+});
+
+// --- 3. THE HEART: PROFILE LOGIC (LOCKER, BATTLEPASS, VBUCKS) ---
+const getProfile = (user, profileId) => {
+    const profile = {
+        _id: user.id, created: "2025-01-01T00:00:00Z", updated: new Date().toISOString(), rvn: 1,
+        profileId: profileId, stats: { attributes: { season_match_boost: 100, loadout_num: 0, level: 100 } }, items: {}
     };
 
-    users.push(newUser);
-    saveUsers(users);
-
-    res.send(`
-        <body style="background:#000; color:#fff; text-align:center; padding-top:20vh; font-family:sans-serif;">
-            <h1 style="color:lime;">SUCCESS!</h1>
-            <p>Account created for <b>${username}</b></p>
-            <p>You can now login in Fortnite using these credentials.</p>
-            <a href="/" style="color:#00ffff;">Return Home</a>
-        </body>
-    `);
-});
-
-// --- 4. OAUTH HANDSHAKE (LOGIN BYPASS) ---
-app.post('/account/api/oauth/token', (req, res) => {
-    const users = loadUsers();
-    // When you login in Fortnite, Starfall sends the name in req.body.username
-    const inputName = req.body.username;
-    const user = users.find(u => u.username === inputName);
-
-    if (!user) {
-        // If account doesn't exist, we reject or auto-create. Let's auto-create for ease:
-        return res.json({ error: "User not found. Please register on the homepage." });
+    if (profileId === "athena") {
+        // SEASON X BATTLE PASS & SKINS
+        profile.items["SeasonX_Pass"] = { templateId: "Token:season10_battlepass", attributes: { item_seen: true } };
+        profile.items["Skin_UltimaKnight"] = { templateId: "AthenaCharacter:CID_484_Athena_Character_Default", attributes: { item_seen: true } };
+        profile.items["Skin_Catalyst"] = { templateId: "AthenaCharacter:CID_474_Athena_Character_Default", attributes: { item_seen: true } };
+        profile.stats.attributes.book_level = 100;
+        profile.stats.attributes.book_xp = 1000;
+        profile.stats.attributes.season_num = 10;
     }
 
+    if (profileId === "common_core") {
+        profile.items["Currency:VBucks"] = { templateId: "Currency:MtxPurchased", quantity: 999999, attributes: { platform: "EpicPC" } };
+    }
+    return profile;
+};
+
+app.post('/fortnite/api/game/v2/profile/:accountId/client/:command', (req, res) => {
+    const user = loadUsers().find(u => u.id === req.params.accountId) || { id: "guest", username: "Player" };
+    const profileId = req.query.profileId || "common_core";
     res.json({
-        access_token: `token_${user.id}`,
-        expires_in: 3600,
-        token_type: "bearer",
-        account_id: user.id,
-        displayName: user.username,
-        client_id: "fortnite",
-        internal_client: true,
-        client_service: "fortnite"
+        profileRevision: 1, profileId, profileChangesBaseRevision: 1,
+        profileChanges: [{ changeType: "fullProfileUpdate", profile: getProfile(user, profileId) }],
+        serverTime: new Date().toISOString(), responseVersion: 1
     });
 });
 
-// --- 5. REQUIRED GAME ENDPOINTS ---
-app.get('/account/api/public/account/:accountId', (req, res) => {
-    const users = loadUsers();
-    const user = users.find(u => u.id === req.params.accountId);
+// --- 4. GAME CONTENT (LOBBY, SHOP, COMPETE) ---
+app.get('/content/api/pages/fortnite-game', (req, res) => {
     res.json({
-        id: req.params.accountId,
-        displayName: user ? user.username : "Player",
-        email: user ? user.email : "none@rene.fn"
+        "dynamicbackgrounds": { "backgrounds": { "backgrounds": [{ "stage": "season10", "backgroundimage": "https://i.imgur.com/DYhYsgd.png" }] } },
+        "shopsections": { "sections": [{ "sectionId": "Featured", "sectionDisplayName": "Featured" }] },
+        "battlepassaboutmessages": { "news": [{ "title": "SEASON X", "body": "Out of Time!", "image": "https://i.imgur.com/DYhYsgd.png" }] }
     });
 });
 
-// (Keep all your other existing endpoints like buildProfile, versioncheck, etc. below this)
+// COMPETE TAB & TOURNAMENTS
+app.get('/fortnite/api/game/v2/events/player/:accountId', (req, res) => res.json({ playerEvents: [], eventTokens: [], created: new Date().toISOString() }));
+app.get('/fortnite/api/stats/events/leaderboards/*', (req, res) => res.json({ entries: [] }));
 
-app.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
-    console.log(`Users database initialized at ${USERS_FILE}`);
-});
+// GAME MODES (Solos, Duos, Squads, Creative)
+app.get('/fortnite/api/game/v2/enabled_features', (req, res) => res.json(["Creative", "BattleRoyale", "Lobby"]));
+
+// --- 5. STABILITY STUBS ---
+app.get('/lightswitch/api/service/bulk/status', (req, res) => res.json([{ serviceInstanceId: "fortnite", status: "UP", allowedActions: ["PLAY"] }]));
+app.get('/fortnite/api/v2/versioncheck/*', (req, res) => res.json({ type: "NO_UPDATE" }));
+app.get('/fortnite/api/waitingroom/v1/waitingroom', (req, res) => res.status(204).end());
+app.post('/datarouter/api/v1/public/data', (req, res) => res.status(204).end());
+
+app.listen(PORT, () => console.log(`RENE-FN Backend Running on Port ${PORT}`));
