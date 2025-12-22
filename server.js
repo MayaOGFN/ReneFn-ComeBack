@@ -2,48 +2,90 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
-const app = express();
 
+const app = express();
+const PORT = process.env.PORT || 8080;
+
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Path to your users file
+// --- DATABASE SETUP ---
+// This ensures the "data" folder exists on Render so it doesn't crash
 const dataDir = path.join(__dirname, 'data');
 const usersFile = path.join(dataDir, 'users.json');
 
-// --- FIX: Ensure the 'data' folder and 'users.json' exist ---
 if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir);
+    console.log("Created data directory");
 }
 if (!fs.existsSync(usersFile)) {
     fs.writeFileSync(usersFile, JSON.stringify([]));
+    console.log("Created users.json file");
 }
 
-// Helper to read/write JSON
-const readUsers = () => JSON.parse(fs.readFileSync(usersFile, 'utf8'));
-const writeUsers = (data) => fs.writeFileSync(usersFile, JSON.stringify(data, null, 2));
+// Helper functions
+const readUsers = () => {
+    try {
+        const data = fs.readFileSync(usersFile, 'utf8');
+        return JSON.parse(data);
+    } catch (e) {
+        return [];
+    }
+};
 
-// --- REGISTRATION ROUTE ---
+const writeUsers = (users) => {
+    fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
+};
+
+// --- ROUTES ---
+
+// 1. Fix "Cannot GET /" - This shows when you visit the base URL
+app.get('/', (req, res) => {
+    res.send("<h1>ReneFN Backend is Online</h1><p>Registration and News APIs are active.</p>");
+});
+
+// 2. Registration Route
 app.post('/register', (req, res) => {
     try {
         const { email, password } = req.body;
-        if (!email || !password) return res.status(400).json({ success: false, message: "Email and password required!" });
 
-        const users = readUsers();
-        if (users.find(u => u.email === email)) {
-            return res.status(400).json({ success: false, message: "User already exists!" });
+        if (!email || !password) {
+            return res.status(400).send("Missing email or password!");
         }
 
-        users.push({ email, password });
+        let users = readUsers();
+
+        // Check if user exists
+        if (users.find(u => u.email === email)) {
+            return res.status(400).send("User already exists!");
+        }
+
+        // Add user
+        users.push({ email, password, created: new Date() });
         writeUsers(users);
-        
-        console.log(`New user registered: ${email}`);
-        res.json({ success: true, message: "Account created successfully!" });
+
+        console.log(`User registered: ${email}`);
+        res.status(200).send("Account created successfully!");
     } catch (err) {
-        console.error("Registration Error:", err);
-        res.status(500).json({ success: false, message: "Internal Server Error. Check backend logs." });
+        console.error(err);
+        res.status(500).send("Internal Server Error: " + err.message);
     }
 });
 
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// 3. News Route (Example)
+app.get('/news', (req, res) => {
+    res.json([
+        { name: "Welcome to ReneFN", image: "https://i.imgur.com/DYhYsgd.png" },
+        { name: "Season X is here!", image: "https://i.imgur.com/DYhYsgd.png" }
+    ]);
+});
+
+// 4. Version Route
+app.get('/launcher/version', (req, res) => {
+    res.send("1.0");
+});
+
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
