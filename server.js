@@ -6,7 +6,7 @@ const PORT = process.env.PORT || 8080;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Very simple CORS so the launcher / tools don't get blocked
+// Simple CORS
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header(
@@ -18,17 +18,17 @@ app.use((req, res, next) => {
     next();
 });
 
-// Simple request logger
+// Simple logger
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
     next();
 });
 
 // =====================================================================================
-// 1. AUTH / ACCOUNT
+// 1. AUTH / ACCOUNT (AUTO-SKIP EPIC LOGIN)
 // =====================================================================================
 
-// Main login – fixes Result=13 and acts as generic access token endpoint
+// Main login – generic token (covers password/exchange/device flows)
 app.post('/account/api/oauth/token', (req, res) => {
     res.json({
         access_token: 'renefn_access_token',
@@ -49,12 +49,62 @@ app.post('/account/api/oauth/token', (req, res) => {
     });
 });
 
+// Client credentials (launcher auth)
+app.post('/account/api/oauth/token', (req, res, next) => {
+    if (req.query.grant_type === 'client_credentials') {
+        return res.json({
+            access_token: 'client_access_token',
+            expires_in: 28800,
+            token_type: 'bearer',
+            client_id: 'fortnite_pc_client',
+            internal_client: true
+        });
+    }
+    next();
+});
+
+// Device code grant
+app.post('/account/api/oauth/token', (req, res, next) => {
+    if (req.query.grant_type === 'device_code') {
+        return res.json({
+            access_token: 'renefn_access_token',
+            expires_in: 28800,
+            token_type: 'bearer',
+            account_id: 'renefn_user',
+            client_id: 'fortnite_pc_client',
+            internal_client: true,
+            displayName: 'ReneFn Player'
+        });
+    }
+    next();
+});
+
+// Exchange code endpoint
+app.post('/account/api/oauth/exchange', (req, res) => {
+    res.json({
+        code: 'renefn_exchange_code',
+        creatingClientId: 'fortnite_pc_client',
+        expiresInSeconds: 999999
+    });
+});
+
+// Device authorization (some builds ping this)
+app.post('/account/api/oauth/deviceAuthorization', (req, res) => {
+    res.json({
+        device_code: 'renefn_device_code',
+        user_code: 'REN3-FN22',
+        verification_uri: 'https://renefn.fake/activate',
+        expires_in: 999999,
+        interval: 5
+    });
+});
+
 // Kill session (logout)
 app.delete('/account/api/oauth/sessions/kill', (req, res) => {
     res.status(204).send();
 });
 
-// Verify token
+// Verify token – used to confirm login
 app.get('/account/api/oauth/verify', (req, res) => {
     res.json({
         token: 'renefn_access_token',
@@ -92,7 +142,6 @@ app.get('/account/api/public/account/:accountId', (req, res) => {
 // 2. LIGHTSWITCH / STATUS / VERSION
 // =====================================================================================
 
-// Lightswitch – tells the game Fortnite is ONLINE
 app.get('/lightswitch/api/service/bulk/status', (req, res) => {
     res.json([
         {
@@ -112,31 +161,28 @@ app.get('/lightswitch/api/service/bulk/status', (req, res) => {
     ]);
 });
 
-// Simple version check – “NO_UPDATE” is usually enough for OG builds
 app.get('/fortnite/api/v2/versioncheck/*', (req, res) => {
     res.json({ type: 'NO_UPDATE' });
 });
 
-// Another version endpoint some builds hit
 app.get('/fortnite/api/version', (req, res) => {
     res.json({
         app: 'fortnite',
-        build: 'OG-Season',
-        version: '7.40.0',
-        buildDate: '2019-02-14T00:00:00.000Z'
+        build: 'SeasonX',
+        version: '10.00.0',
+        buildDate: '2019-08-01T00:00:00.000Z'
     });
 });
 
-// Enabled features – just return empty to avoid errors
 app.get('/fortnite/api/game/v2/enabled_features', (req, res) => {
     res.json([]);
 });
 
 // =====================================================================================
-// 3. CONTENT / NEWS / CALENDAR (3-DOTS FIX PART)
+// 3. CONTENT / NEWS / CALENDAR (3-DOTS CRITICAL)
 // =====================================================================================
 
-// World info – BR news in lobby
+// BR world info
 app.get('/fortnite/api/game/v2/world/info', (req, res) => {
     res.json({
         battleroyalenews: {
@@ -145,8 +191,8 @@ app.get('/fortnite/api/game/v2/world/info', (req, res) => {
                     {
                         image: 'https://i.imgur.com/DYhYsgd.png',
                         title: 'Welcome to ReneFn!',
-                        body: 'Enjoy the OG season with all features enabled.',
-                        adspace: 'Season 10'
+                        body: 'Enjoy Season X on ReneFn OG.',
+                        adspace: 'SeasonX'
                     }
                 ]
             }
@@ -154,7 +200,7 @@ app.get('/fortnite/api/game/v2/world/info', (req, res) => {
     });
 });
 
-// Launcher content – MOTDs, panels, etc.
+// Launcher content
 app.get('/fortnite/api/game/v2/launcher/content', (req, res) => {
     res.json({
         _title: 'ReneFn Content',
@@ -170,7 +216,7 @@ app.get('/fortnite/api/game/v2/launcher/content', (req, res) => {
     });
 });
 
-// CRITICAL for 3-dots: content pages
+// CRITICAL: pages endpoint (3-dots)
 app.get('/content/api/pages/fortnite-game', (req, res) => {
     res.json({
         _title: 'Fortnite Game Content',
@@ -182,7 +228,7 @@ app.get('/content/api/pages/fortnite-game', (req, res) => {
                     {
                         image: 'https://i.imgur.com/DYhYsgd.png',
                         title: 'Welcome to ReneFn!',
-                        body: 'Enjoy the OG season with all features enabled.',
+                        body: 'Enjoy Season X with full OG vibes.',
                         adspace: 'BR_NEWS'
                     }
                 ]
@@ -203,7 +249,7 @@ app.get('/content/api/pages/fortnite-game', (req, res) => {
     });
 });
 
-// Calendar timeline – used for events / playlist updates
+// Calendar timeline
 app.get('/fortnite/api/calendar/v1/timeline', (req, res) => {
     const now = new Date().toISOString();
     res.json({
@@ -288,7 +334,6 @@ app.get('/fortnite/api/storefront/v2/catalog', (req, res) => {
 // 5. PROFILE / LOCKER / MCP
 // =====================================================================================
 
-// Helper: base profile structure for a single OGFN account
 function createAthenaProfile() {
     const now = new Date().toISOString();
     return {
@@ -310,7 +355,7 @@ function createAthenaProfile() {
                 quantity: 99999
             },
 
-            // Example skin
+            // Renegade Raider (reward + shop)
             CID_028_Athena_Character_Knight: {
                 templateId: 'AthenaCharacter:CID_028_Athena_Character_Knight',
                 attributes: {
@@ -320,7 +365,7 @@ function createAthenaProfile() {
                 quantity: 1
             },
 
-            // Example pickaxe
+            // Basic pickaxe
             Pickaxe_ID_001: {
                 templateId: 'AthenaPickaxe:Pickaxe_ID_001',
                 attributes: {
@@ -330,7 +375,7 @@ function createAthenaProfile() {
                 quantity: 1
             },
 
-            // Example glider
+            // Basic glider
             Glider_ID_001: {
                 templateId: 'AthenaGlider:Glider_ID_001',
                 attributes: {
@@ -340,7 +385,7 @@ function createAthenaProfile() {
                 quantity: 1
             },
 
-            // Example backbling
+            // Back bling for bundle
             BID_001: {
                 templateId: 'AthenaBackpack:BID_001',
                 attributes: {
@@ -364,7 +409,7 @@ function createAthenaProfile() {
                     purchaseHistory: []
                 },
                 past_seasons: [],
-                season_num: 7,
+                season_num: 10,
                 season_matchmaking_region: 'EU',
                 banner_icon: 'StandardBanner1',
                 banner_color: 'DefaultColor1'
@@ -374,10 +419,9 @@ function createAthenaProfile() {
     };
 }
 
-// QueryProfile – core MCP endpoint, many actions go through here
+// QueryProfile
 app.post('/fortnite/api/game/v2/profile/:accountId/client/QueryProfile', (req, res) => {
     const profile = createAthenaProfile();
-
     res.json({
         profileRevision: profile.rvn,
         profileId: 'athena',
@@ -393,7 +437,7 @@ app.post('/fortnite/api/game/v2/profile/:accountId/client/QueryProfile', (req, r
     });
 });
 
-// Equip cosmetic (skin / pickaxe etc.) – basic stub
+// Cosmetic equip stub
 app.post('/fortnite/api/game/v2/profile/:accountId/client/EquipBattleRoyaleCustomization', (req, res) => {
     res.json({
         profileRevision: 1,
@@ -405,7 +449,7 @@ app.post('/fortnite/api/game/v2/profile/:accountId/client/EquipBattleRoyaleCusto
     });
 });
 
-// Set cosmetic locker slot – stubbed OK
+// Locker slot stub
 app.post('/fortnite/api/game/v2/profile/:accountId/client/SetCosmeticLockerSlot', (req, res) => {
     res.json({
         profileRevision: 1,
@@ -417,7 +461,7 @@ app.post('/fortnite/api/game/v2/profile/:accountId/client/SetCosmeticLockerSlot'
     });
 });
 
-// Purchase endpoint – just succeed
+// Purchase stub
 app.post('/fortnite/api/game/v2/profile/:accountId/client/PurchaseCatalogEntry', (req, res) => {
     res.json({
         profileRevision: 1,
@@ -430,35 +474,29 @@ app.post('/fortnite/api/game/v2/profile/:accountId/client/PurchaseCatalogEntry',
 });
 
 // =====================================================================================
-// 6. FRIENDS / PRESENCE / PARTY (STUBS)
+// 6. FRIENDS / PRESENCE / PARTY
 // =====================================================================================
 
-// Friends list
 app.get('/friends/api/public/friends/:accountId', (req, res) => {
     res.json([]);
 });
 
-// Incoming friend requests
 app.get('/friends/api/public/incoming/:accountId', (req, res) => {
     res.json([]);
 });
 
-// Outgoing friend requests
 app.get('/friends/api/public/outgoing/:accountId', (req, res) => {
     res.json([]);
 });
 
-// Presence subscriptions
 app.get('/presence/api/v1/_/:accountId/settings/subscriptions', (req, res) => {
     res.json({});
 });
 
-// Set presence – do nothing, just OK
 app.post('/presence/api/v1/:accountId/presence', (req, res) => {
     res.status(204).send();
 });
 
-// Party service – simple empty party
 app.get('/party/api/v1/Fortnite/user/:accountId', (req, res) => {
     res.json({
         current: [],
@@ -491,21 +529,19 @@ app.get('/fortnite/api/matchmaking/session/:sessionId', (req, res) => {
 });
 
 // =====================================================================================
-// 8. CLOUDSTORAGE (3-DOTS FIX PART)
+// 8. CLOUDSTORAGE (3-DOTS CRITICAL)
 // =====================================================================================
 
-// System cloudstorage – required by many OG builds
 app.get('/fortnite/api/cloudstorage/system', (req, res) => {
     res.json([]);
 });
 
-// User cloudstorage
 app.get('/fortnite/api/cloudstorage/user/:accountId', (req, res) => {
     res.json([]);
 });
 
 // =====================================================================================
-// 9. TOURNAMENTS – RENEGADE'S REVENGE
+// 9. TOURNAMENT – RENEGADE'S REVENGE
 // =====================================================================================
 
 app.get('/fortnite/api/game/v2/tournament/api/tournaments', (req, res) => {
@@ -546,12 +582,10 @@ app.get('/fortnite/api/game/v2/tournament/api/tournaments', (req, res) => {
 // 10. ROOT / CATCH-ALL
 // =====================================================================================
 
-// Root route – for uptime pings
 app.get('/', (req, res) => {
-    res.send('ReneFn Backend is Online and OG-ready!');
+    res.send('ReneFn Backend is Online, Season X OG-ready!');
 });
 
-// Optional catch-all for unknown routes so the game doesn’t 404 hard
 app.all('*', (req, res) => {
     console.log(`Unhandled route hit: ${req.method} ${req.originalUrl}`);
     res.status(200).json({
@@ -566,5 +600,5 @@ app.all('*', (req, res) => {
 // =====================================================================================
 
 app.listen(PORT, () => {
-    console.log(`ReneFn OG backend is running on port ${PORT}`);
+    console.log(`ReneFn Season X OG backend is running on port ${PORT}`);
 });
