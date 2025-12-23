@@ -1,15 +1,16 @@
-// ReneFN Backend (Custom OGFN-Compatible API)
-// -------------------------------------------
+// ReneFN Backend (Render-Optimized)
+// ----------------------------------
 
 const express = require("express");
 const crypto = require("crypto");
 const cors = require("cors");
 
 const app = express();
-const PORT = process.env.PORT || 8080;
-
 app.use(express.json());
 app.use(cors());
+
+// Render assigns a port automatically
+const PORT = process.env.PORT || 8080;
 
 // In-memory session store
 const sessions = new Map();
@@ -21,7 +22,9 @@ const gen = () => crypto.randomBytes(16).toString("hex");
 // 1. AUTH SYSTEM (Custom Token + Account ID)
 // ------------------------------------------------------
 app.post("/renefn/auth/token", (req, res) => {
-    const username = req.body.username || "RenePlayer_" + Math.floor(Math.random() * 9999);
+    const username =
+        req.body.username ||
+        "RenePlayer_" + Math.floor(Math.random() * 9999);
 
     const accountId = gen();
     const token = gen();
@@ -40,9 +43,10 @@ app.post("/renefn/auth/token", (req, res) => {
 
 // Verify token
 app.get("/renefn/auth/verify", (req, res) => {
-    const token = req.headers.authorization?.replace("Bearer ", "");
-    const session = sessions.get(token);
+    const auth = req.headers.authorization || "";
+    const token = auth.replace("Bearer ", "");
 
+    const session = sessions.get(token);
     if (!session) return res.status(401).json({ valid: false });
 
     res.json({
@@ -72,9 +76,10 @@ app.get("/renefn/content/lobby", (req, res) => {
 // 3. PLAYER PROFILE (Custom OGFN Style)
 // ------------------------------------------------------
 app.post("/renefn/profile/get", (req, res) => {
-    const token = req.headers.authorization?.replace("Bearer ", "");
-    const session = sessions.get(token);
+    const auth = req.headers.authorization || "";
+    const token = auth.replace("Bearer ", "");
 
+    const session = sessions.get(token);
     if (!session) return res.status(401).json({ error: "Invalid token" });
 
     res.json({
