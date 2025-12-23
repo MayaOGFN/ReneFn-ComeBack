@@ -1,78 +1,110 @@
-const express = require('express');
-const crypto = require('crypto');
+// ReneFN Backend (Custom OGFN-Compatible API)
+// -------------------------------------------
+
+const express = require("express");
+const crypto = require("crypto");
+const cors = require("cors");
+
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.use(express.json());
+app.use(cors());
 
-// Simple In-Memory "Database"
-const activePlayers = new Map();
+// In-memory session store
+const sessions = new Map();
 
-// --- 1. OAUTH & TOKEN (DYNAMIC SESSIONS) ---
-app.post('/account/api/oauth/token', (req, res) => {
-    // If the launcher sends an exchange code, we treat it as a new session
-    const displayName = req.body.username || "RenePlayer_" + Math.floor(Math.random() * 9000);
-    const accountId = crypto.createHash('md5').update(displayName).digest('hex');
-    const token = crypto.randomBytes(16).toString('hex');
+// Utility
+const gen = () => crypto.randomBytes(16).toString("hex");
 
-    // Store this player's data
-    activePlayers.set(token, { accountId, displayName });
+// ------------------------------------------------------
+// 1. AUTH SYSTEM (Custom Token + Account ID)
+// ------------------------------------------------------
+app.post("/renefn/auth/token", (req, res) => {
+    const username = req.body.username || "RenePlayer_" + Math.floor(Math.random() * 9999);
 
-    console.log(`[LOGIN] User: ${displayName} | ID: ${accountId}`);
+    const accountId = gen();
+    const token = gen();
+
+    sessions.set(token, { username, accountId });
+
+    console.log(`[AUTH] ${username} logged in (${accountId})`);
 
     res.json({
         access_token: token,
-        expires_in: 28800,
-        token_type: "bearer",
         account_id: accountId,
-        displayName: displayName,
-        app: "fortnite",
-        in_app_id: accountId,
-        device_id: "renefn_device"
+        username,
+        expires_in: 86400
     });
 });
 
-app.get('/account/api/oauth/verify', (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = authHeader ? authHeader.replace('Bearer ', '') : null;
-    const player = activePlayers.get(token);
+// Verify token
+app.get("/renefn/auth/verify", (req, res) => {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const session = sessions.get(token);
 
-    if (player) {
-        res.json({ token: token, account_id: player.accountId, display_name: player.displayName, app: "fortnite" });
-    } else {
-        res.status(401).json({ error: "Invalid Session" });
-    }
+    if (!session) return res.status(401).json({ valid: false });
+
+    res.json({
+        valid: true,
+        accountId: session.accountId,
+        username: session.username
+    });
 });
 
-// --- 2. CMS & LOADING (PREVENTS HANGS) ---
-app.get('/content/api/pages/fortnite-game', (req, res) => {
+// ------------------------------------------------------
+// 2. CUSTOM CMS / LOBBY DATA
+// ------------------------------------------------------
+app.get("/renefn/content/lobby", (req, res) => {
     res.json({
-        "jcr:isCheckedOut": true,
-        "logininterpolation": { "active": true, "backgrounds": [{ "stage": "Lobby", "background": "Season7" }] },
-        "battleroyalenews": {
-            "news": {
-                "messages": [{ "title": "RENEFN", "body": "Unique Session Active", "image": "https://i.imgur.com/DYhYsgd.png" }]
+        lobbyBackground: "Season7",
+        news: [
+            {
+                title: "RENEFN",
+                body: "Backend Connected Successfully",
+                image: "https://i.imgur.com/DYhYsgd.png"
             }
+        ]
+    });
+});
+
+// ------------------------------------------------------
+// 3. PLAYER PROFILE (Custom OGFN Style)
+// ------------------------------------------------------
+app.post("/renefn/profile/get", (req, res) => {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const session = sessions.get(token);
+
+    if (!session) return res.status(401).json({ error: "Invalid token" });
+
+    res.json({
+        accountId: session.accountId,
+        username: session.username,
+        stats: {
+            level: 100,
+            xp: 999999
+        },
+        inventory: {
+            vbucks: 1337,
+            items: []
         }
     });
 });
 
-// --- 3. MCP (PLAYER-SPECIFIC PROFILES) ---
-app.post('/fortnite/api/game/v2/profile/:accountId/client/:operation', (req, res) => {
+// ------------------------------------------------------
+// 4. LOBBY STATE (Custom)
+// ------------------------------------------------------
+app.post("/renefn/lobby/state", (req, res) => {
     res.json({
-        profileRevision: 1,
-        profileId: req.query.profileId || "athena",
-        profileChanges: [{
-            changeType: "fullProfileUpdate",
-            profile: {
-                _id: req.params.accountId,
-                accountId: req.params.accountId,
-                items: { "Currency:MtxPurchased": { templateId: "Currency:MtxPurchased", quantity: 1337 } },
-                stats: { attributes: { level: 100 } }
-            }
-        }],
-        serverTime: new Date().toISOString()
+        state: "Lobby",
+        players: 1,
+        timestamp: new Date().toISOString()
     });
 });
 
-app.listen(PORT, () => console.log(`ReneFn Backend live on port ${PORT}`));
+// ------------------------------------------------------
+// 5. START SERVER
+// ------------------------------------------------------
+app.listen(PORT, () => {
+    console.log(`ReneFN Backend running on port ${PORT}`);
+});
