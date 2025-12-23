@@ -1,141 +1,82 @@
-// ReneFN Backend (Single-File, Render-Optimized)
-// ----------------------------------------------
-
-const express = require("express");
-const crypto = require("crypto");
-const cors = require("cors");
-
+const express = require('express');
+const crypto = require('crypto');
 const app = express();
-
-// Render (or any host) will inject PORT via env
 const PORT = process.env.PORT || 8080;
 
 app.use(express.json());
-app.use(cors());
 
-// In-memory session store
-const sessions = new Map();
+// In-memory session tracking
+const players = new Map();
 
-// Utility: generate random IDs
-function gen() {
-    return crypto.randomBytes(16).toString("hex");
-}
+// --- AUTH (FIXES THE EPIC LOGIN LEAK) ---
+app.post('/account/api/oauth/token', (req, res) => {
+    // Determine player identity
+    const displayName = req.body.username || "RenePlayer_" + Math.floor(Math.random() * 999);
+    const accountId = crypto.createHash('md5').update(displayName).digest('hex');
+    const accessToken = crypto.randomBytes(16).toString('hex');
 
-// ------------------------------------------------------
-// 1. AUTH SYSTEM (Custom Token + Account ID)
-// ------------------------------------------------------
-app.post("/renefn/auth/token", (req, res) => {
-    const body = req.body || {};
-
-    const username =
-        body.username ||
-        "RenePlayer_" + Math.floor(Math.random() * 9999);
-
-    const accountId = gen();
-    const token = gen();
-
-    sessions.set(token, { username, accountId });
-
-    console.log(`[AUTH] ${username} logged in (${accountId})`);
+    // Save session
+    players.set(accessToken, { accountId, displayName });
+    console.log(`[AUTH] Login: ${displayName} | ID: ${accountId}`);
 
     res.json({
-        access_token: token,
+        access_token: accessToken,
+        expires_in: 28800,
+        token_type: "bearer",
         account_id: accountId,
-        username: username,
-        expires_in: 86400
+        displayName: displayName,
+        app: "fortnite",
+        in_app_id: accountId,
+        device_id: "renefn_device"
     });
 });
 
-// Verify token
-app.get("/renefn/auth/verify", (req, res) => {
-    const authHeader = req.headers.authorization || "";
-    const token = authHeader.startsWith("Bearer ")
-        ? authHeader.slice(7)
-        : authHeader;
+app.get('/account/api/oauth/verify', (req, res) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    const player = players.get(token);
 
-    const session = sessions.get(token);
-
-    if (!session) {
-        return res.status(401).json({ valid: false });
+    if (player) {
+        res.json({ token, account_id: player.accountId, display_name: player.displayName, app: "fortnite" });
+    } else {
+        res.status(401).json({ error: "Invalid Token" });
     }
-
-    res.json({
-        valid: true,
-        accountId: session.accountId,
-        username: session.username
-    });
 });
 
-// ------------------------------------------------------
-// 2. CUSTOM CMS / LOBBY DATA
-// ------------------------------------------------------
-app.get("/renefn/content/lobby", (req, res) => {
+// --- CMS (FIXES PRE-LOAD HANG) ---
+app.get('/content/api/pages/fortnite-game', (req, res) => {
     res.json({
-        lobbyBackground: "Season7",
-        news: [
-            {
-                title: "RENEFN",
-                body: "Backend Connected Successfully",
-                image: "https://i.imgur.com/DYhYsgd.png"
+        "jcr:isCheckedOut": true,
+        "logininterpolation": { "active": true, "backgrounds": [{ "stage": "Lobby", "background": "Season7" }] },
+        "battleroyalenews": {
+            "news": {
+                "messages": [{ "title": "RENEFN", "body": "Welcome back!", "image": "https://i.imgur.com/DYhYsgd.png" }]
             }
-        ]
-    });
-});
-
-// ------------------------------------------------------
-// 3. PLAYER PROFILE (Custom Style)
-// ------------------------------------------------------
-app.post("/renefn/profile/get", (req, res) => {
-    const authHeader = req.headers.authorization || "";
-    const token = authHeader.startsWith("Bearer ")
-        ? authHeader.slice(7)
-        : authHeader;
-
-    const session = sessions.get(token);
-
-    if (!session) {
-        return res.status(401).json({ error: "Invalid token" });
-    }
-
-    res.json({
-        accountId: session.accountId,
-        username: session.username,
-        stats: {
-            level: 100,
-            xp: 999999
-        },
-        inventory: {
-            vbucks: 1337,
-            items: []
         }
     });
 });
 
-// ------------------------------------------------------
-// 4. LOBBY STATE (Custom)
-// ------------------------------------------------------
-app.post("/renefn/lobby/state", (req, res) => {
+// --- MCP (LOCKER & STATS) ---
+app.post('/fortnite/api/game/v2/profile/:accountId/client/:operation', (req, res) => {
     res.json({
-        state: "Lobby",
-        players: 1,
-        timestamp: new Date().toISOString()
+        profileRevision: 1,
+        profileId: req.query.profileId || "athena",
+        profileChanges: [{
+            changeType: "fullProfileUpdate",
+            profile: {
+                _id: req.params.accountId,
+                accountId: req.params.accountId,
+                updated: new Date().toISOString(),
+                items: { "Currency:MtxPurchased": { templateId: "Currency:MtxPurchased", quantity: 99999 } },
+                stats: { attributes: { level: 100, xp: 0 } }
+            }
+        }],
+        serverTime: new Date().toISOString()
     });
 });
 
-// ------------------------------------------------------
-// 5. ROOT CHECK
-// ------------------------------------------------------
-app.get("/", (req, res) => {
-    res.json({
-        status: "ok",
-        service: "ReneFN Backend",
-        time: new Date().toISOString()
-    });
+// --- LIGHTSWITCH ---
+app.get('/lightswitch/api/service/bulk/status', (req, res) => {
+    res.json([{ serviceInstanceId: "fortnite", status: "UP", message: "Live", allowedActions: ["PLAY"] }]);
 });
 
-// ------------------------------------------------------
-// 6. START SERVER
-// ------------------------------------------------------
-app.listen(PORT, () => {
-    console.log(`ReneFN Backend running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Backend Active on Port ${PORT}`));
