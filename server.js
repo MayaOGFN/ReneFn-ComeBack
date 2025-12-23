@@ -30,7 +30,6 @@ app.use((req, res, next) => {
 
 // Main login – fixes Result=13 and acts as generic access token endpoint
 app.post('/account/api/oauth/token', (req, res) => {
-    // You can inspect req.body.grant_type / exchange_code / password etc. if you want
     res.json({
         access_token: 'renefn_access_token',
         expires_in: 28800,
@@ -50,12 +49,12 @@ app.post('/account/api/oauth/token', (req, res) => {
     });
 });
 
-// Kill session (logout) – just say OK
+// Kill session (logout)
 app.delete('/account/api/oauth/sessions/kill', (req, res) => {
     res.status(204).send();
 });
 
-// Generic “who am I” – the launcher sometimes asks for this
+// Verify token
 app.get('/account/api/oauth/verify', (req, res) => {
     res.json({
         token: 'renefn_access_token',
@@ -134,7 +133,7 @@ app.get('/fortnite/api/game/v2/enabled_features', (req, res) => {
 });
 
 // =====================================================================================
-// 3. CONTENT / NEWS / CALENDAR
+// 3. CONTENT / NEWS / CALENDAR (3-DOTS FIX PART)
 // =====================================================================================
 
 // World info – BR news in lobby
@@ -161,6 +160,39 @@ app.get('/fortnite/api/game/v2/launcher/content', (req, res) => {
         _title: 'ReneFn Content',
         _activeDate: '2017-11-01T00:00:00.000Z',
         _locale: 'en-US',
+        subgameinfo: {
+            br: {
+                image: 'https://i.imgur.com/DYhYsgd.png',
+                title: 'ReneFn Battle Royale',
+                body: 'Custom OG experience powered by ReneFn.'
+            }
+        }
+    });
+});
+
+// CRITICAL for 3-dots: content pages
+app.get('/content/api/pages/fortnite-game', (req, res) => {
+    res.json({
+        _title: 'Fortnite Game Content',
+        _activeDate: '2017-01-01T00:00:00.000Z',
+        _locale: 'en-US',
+        battleroyalenews: {
+            news: {
+                messages: [
+                    {
+                        image: 'https://i.imgur.com/DYhYsgd.png',
+                        title: 'Welcome to ReneFn!',
+                        body: 'Enjoy the OG season with all features enabled.',
+                        adspace: 'BR_NEWS'
+                    }
+                ]
+            }
+        },
+        emergencynotice: {
+            news: {
+                messages: []
+            }
+        },
         subgameinfo: {
             br: {
                 image: 'https://i.imgur.com/DYhYsgd.png',
@@ -258,10 +290,11 @@ app.get('/fortnite/api/storefront/v2/catalog', (req, res) => {
 
 // Helper: base profile structure for a single OGFN account
 function createAthenaProfile() {
+    const now = new Date().toISOString();
     return {
         _id: 'AthenaProfile',
-        created: new Date().toISOString(),
-        updated: new Date().toISOString(),
+        created: now,
+        updated: now,
         rvn: 1,
         wipeNumber: 1,
         accountId: 'renefn_user',
@@ -360,9 +393,8 @@ app.post('/fortnite/api/game/v2/profile/:accountId/client/QueryProfile', (req, r
     });
 });
 
-// Equip cosmetic (skin / pickaxe etc.)
+// Equip cosmetic (skin / pickaxe etc.) – basic stub
 app.post('/fortnite/api/game/v2/profile/:accountId/client/EquipBattleRoyaleCustomization', (req, res) => {
-    // You can inspect req.body.slotName / itemToSlot if you want to make it dynamic
     res.json({
         profileRevision: 1,
         profileId: 'athena',
@@ -385,7 +417,7 @@ app.post('/fortnite/api/game/v2/profile/:accountId/client/SetCosmeticLockerSlot'
     });
 });
 
-// Gift and purchase emulation endpoints – just succeed
+// Purchase endpoint – just succeed
 app.post('/fortnite/api/game/v2/profile/:accountId/client/PurchaseCatalogEntry', (req, res) => {
     res.json({
         profileRevision: 1,
@@ -398,12 +430,12 @@ app.post('/fortnite/api/game/v2/profile/:accountId/client/PurchaseCatalogEntry',
 });
 
 // =====================================================================================
-// 6. FRIENDS / PRESENCE / PARTY (VERY SIMPLE STUBS)
+// 6. FRIENDS / PRESENCE / PARTY (STUBS)
 // =====================================================================================
 
 // Friends list
 app.get('/friends/api/public/friends/:accountId', (req, res) => {
-    res.json([]); // No friends, no errors
+    res.json([]);
 });
 
 // Incoming friend requests
@@ -416,7 +448,7 @@ app.get('/friends/api/public/outgoing/:accountId', (req, res) => {
     res.json([]);
 });
 
-// Presence
+// Presence subscriptions
 app.get('/presence/api/v1/_/:accountId/settings/subscriptions', (req, res) => {
     res.json({});
 });
@@ -440,7 +472,6 @@ app.get('/party/api/v1/Fortnite/user/:accountId', (req, res) => {
 // 7. MATCHMAKING STUBS
 // =====================================================================================
 
-// Matchmaking – the game just expects something back to not crash
 app.post('/fortnite/api/matchmaking/session/:sessionId/join', (req, res) => {
     res.json({
         sessionId: req.params.sessionId,
@@ -460,7 +491,59 @@ app.get('/fortnite/api/matchmaking/session/:sessionId', (req, res) => {
 });
 
 // =====================================================================================
-// 8. CATCH-ALL / ROOT
+// 8. CLOUDSTORAGE (3-DOTS FIX PART)
+// =====================================================================================
+
+// System cloudstorage – required by many OG builds
+app.get('/fortnite/api/cloudstorage/system', (req, res) => {
+    res.json([]);
+});
+
+// User cloudstorage
+app.get('/fortnite/api/cloudstorage/user/:accountId', (req, res) => {
+    res.json([]);
+});
+
+// =====================================================================================
+// 9. TOURNAMENTS – RENEGADE'S REVENGE
+// =====================================================================================
+
+app.get('/fortnite/api/game/v2/tournament/api/tournaments', (req, res) => {
+    res.json({
+        tournaments: [
+            {
+                id: 'RenegadesRevenge',
+                title: "Renegade's Revenge",
+                subtitle: 'Earn 29 points to unlock the Renegade Raider Bundle!',
+                schedule: [
+                    {
+                        eventId: 'RenegadesRevenge_Event',
+                        startTime: '2025-01-01T00:00:00.000Z',
+                        endTime: '2099-01-01T00:00:00.000Z',
+                        scoringRules: [
+                            { rule: 'Placement', points: 10 },
+                            { rule: 'Elimination', points: 1 }
+                        ],
+                        unlockAtPoints: 29,
+                        rewards: [
+                            {
+                                templateId: 'AthenaCharacter:CID_028_Athena_Character_Knight',
+                                quantity: 1
+                            },
+                            {
+                                templateId: 'AthenaBackpack:BID_001',
+                                quantity: 1
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    });
+});
+
+// =====================================================================================
+// 10. ROOT / CATCH-ALL
 // =====================================================================================
 
 // Root route – for uptime pings
@@ -468,7 +551,7 @@ app.get('/', (req, res) => {
     res.send('ReneFn Backend is Online and OG-ready!');
 });
 
-// Optional catch-all for unknown MCP endpoints so the game doesn’t 404 hard
+// Optional catch-all for unknown routes so the game doesn’t 404 hard
 app.all('*', (req, res) => {
     console.log(`Unhandled route hit: ${req.method} ${req.originalUrl}`);
     res.status(200).json({
